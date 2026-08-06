@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { width: 350px; padding: 15px; font-family: sans-serif; }
+    h3 { margin-top: 0; }
+    button { 
+      width: 100%; 
+      padding: 10px; 
+      margin: 5px 0;
+      cursor: pointer;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .primary { background: #006B3F; color: white; }
+    .primary:hover { background: #005530; }
+    .secondary { background: #f0f0f0; color: #333; }
+    .secondary:hover { background: #e0e0e0; }
+    .danger { background: #dc3545; color: white; }
+    .danger:hover { background: #c82333; }
+    input {
+      width: 100%;
+      padding: 8px;
+      margin: 3px 0;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 13px;
+    }
+    label { font-size: 12px; color: #666; display: block; margin-top: 5px; }
+    .section { border: 1px solid #e0e0e0; border-radius: 6px; padding: 10px; margin: 8px 0; }
+    #status { 
+      margin-top: 10px; 
+      padding: 10px; 
+      background: #f8f8f8; 
+      border-radius: 4px;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    .log-entry { margin: 2px 0; }
+    .log-info { color: #007bff; }
+    .log-success { color: #28a745; }
+    .log-error { color: #dc3545; }
+  </style>
+</head>
+<body>
+  <h3>신한은행 자동화</h3>
+  
+  <button id="goToLogin" class="primary">1. 로그인 페이지 이동</button>
+  <button id="trainKeys" class="primary" style="background:#e67e22">키패드 학습 (a-z,0-9 한번씩 누르기)</button>
+  <button id="openKeypad" class="danger">테스트: TransKey 키패드 열기</button>
+  
+  <div class="section">
+    <label><input type="checkbox" id="dummyTest"> 더미 테스트 모드 (test123/test345)</label>
+    <label>아이디</label>
+    <input type="text" id="loginId" placeholder="이용자ID">
+    <label>비밀번호</label>
+    <input type="password" id="loginPw" placeholder="비밀번호">
+    <button id="doLogin" class="secondary">2. 로그인</button>
+  </div>
+  
+  <button id="goToAccount" class="secondary">3. 계좌조회 이동</button>
+  
+  <div class="section">
+    <label>계좌번호</label>
+    <input type="text" id="accountNo" placeholder="계좌번호 (하이픈 없이)">
+    <label>계좌 비밀번호</label>
+    <input type="password" id="accountPw" placeholder="계좌 비밀번호">
+    <button id="doAccountInquiry" class="secondary">4. 계좌 조회</button>
+  </div>
+  
+  <button id="selectPeriod" class="secondary">4-1. 조회기간 3개월 선택</button>
+  <button id="downloadCsv" class="secondary">5. 거래내역 CSV 다운로드</button>
+  <button id="downloadLogs" class="danger">로그 다운로드</button>
+  
+  <div id="status"></div>
+  
+  <script src="vision.js"></script>
+  <script src="login.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

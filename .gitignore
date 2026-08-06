@@ -1,0 +1,6 @@
+.idea/
+.playwright-mcp/
+*.png
+.env
+vlm/
+capture/
