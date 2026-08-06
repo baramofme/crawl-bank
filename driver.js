@@ -576,20 +576,21 @@ async function main() {
         return;
       }
 
-      // 조회기간 3개월 선택 (w2radio, id: wfr_searchCalendar_rad_gigan_input_4 = 3개월)
+      // 조회기간 1년 선택 (w2radio 라벨 매칭)
       const periodSet = await bank.evaluate(() => {
-        const input = document.getElementById('wfr_searchCalendar_rad_gigan_input_4') ||
-          [...document.querySelectorAll('input.w2radio_input')].find(r => {
-            const label = document.querySelector(`label[for="${r.id}"]`);
-            return label && label.textContent.trim() === '3개월';
-          });
-        if (!input) return false;
-        input.click();
-        input.checked = true;
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        return true;
+        const radios = [...document.querySelectorAll('input.w2radio_input')];
+        for (const r of radios) {
+          const label = document.querySelector(`label[for="${r.id}"]`);
+          if (label && label.textContent.trim().includes('1년')) {
+            r.click();
+            r.checked = true;
+            r.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
+          }
+        }
+        return false;
       }).catch(() => false);
-      LOG('조회기간 3개월 선택:', periodSet);
+      LOG('조회기간 1년 선택:', periodSet);
 
       // 비밀번호 입력된 계좌별: 숫자 키패드 요소 스크린샷 → VLM 인식 → TransKey 입력 → 조회
       for (let i = 0; i < accsToQuery.length; i++) {
