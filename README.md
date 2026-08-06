@@ -1,42 +1,110 @@
 # crawl-bank
 
-신한은행 간편조회 자동화 프로젝트
+신한은행 간편조회 자동화 프로젝트 (로그인 → 계좌조회 → 거래내역 CSV)
 
 ## 개요
 
-- **목표**: 신한은행 간편조회 서비스 자동화 (로그인 → 계좌조회 → 거래내역 CSV 추출)
-- **방식**: 크롬 확장 프로그램 + SmolVLM2 Vision LLM (로컬 CPU)
+- **목표**: 신한은행 간편조회 자동화 (로그인 → 계좌조회 → 거래내역 CSV 추출)
+- **방식**: 크롬 확장 프로그램 + Playwright(connectOverCDP) + LFM2.5-VL-450M Vision LLM (로컬 CPU)
 
 ## 프로젝트 구조
 
 ```
 crawl-bank/
+├── driver.js                # 전체 자동화 드라이버 (Playwright connectOverCDP)
+├── playwright.config.js     # Playwright 설정 (CDP 9222)
+├── tests/extension.spec.js  # 확장 조작 검증 테스트
 ├── shinhan-extractor/       # 크롬 확장 프로그램 (Manifest V3)
-│   ├── manifest.json        # 확장 설정 (host_permissions, world: MAIN)
-│   ├── popup.html           # 확장 UI (로그인/계좌조회 폼)
-│   ├── popup.js             # 이벤트 핸들러 + 로그
-│   ├── login.js             # runInPage, 로그인/계좌조회/학습 기능
-│   ├── tk.js                # TransKey 제어 (pagescript 주입용)
+│   ├── manifest.json
+│   ├── popup.html / popup.js
+│   ├── login.js             # runInPage, 로그인/계좌조회/숫자 키패드
+│   ├── tk.js / transkey.js  # TransKey 제어 + 키패드 캡처
 │   └── vision.js            # Vision LLM API 호출
-├── vision_server.py         # SmolVLM2 Vision 서버 (llama-cpp-python)
-├── ocr_server.py            # Tesseract OCR 서버 (폐기됨)
-├── vlm/                     # SmolVLM2 모델 파일 (gitignore)
-│   ├── models/              #   - Q8_0.gguf (175MB)
-│   │   └── mmproj-Q8_0.gguf #   - mmproj (104MB)
-│   └── llama-b10285/        # llama-server 바이너리
-├── capture/                 # 신한은행 HTML 디버깅 캡처
+├── vlm/
+│   ├── llama-b10285/        # llama-server 바이너리 (커밋됨)
+│   ├── download-models.sh   # 모델 다운로드 (Linux/macOS)
+│   ├── download-models.cmd  # 모델 다운로드 (Windows CMD)
+│   ├── download-models.ps1  # 모델 다운로드 (PowerShell)
+│   └── models/              # 모델 파일 (gitignore, 다운로드 필요)
+│       ├── LFM2.5-VL-450M-Q8_0.gguf        (362MB)
+│       └── mmproj-LFM2.5-VL-450m-Q8_0.gguf (99MB)
+├── docs/research/           # 연구 문서 (로그인/조회/진행상황)
 └── README.md
 ```
 
-## 작동 흐름
+## 준비 (1회)
+
+### 1. 모델 다운로드
+
+```bash
+cd vlm
+./download-models.sh        # Linux/macOS
+# 또는 .\download-models.ps1 (PowerShell) / download-models.cmd (CMD)
+```
+
+### 2. 확장 프로그램 설치 (Chrome 137+ --load-extension 차단 → 수동 설치 필수)
+
+```bash
+# Chrome을 banking ext 프로필 + CDP 9222로 실행
+/usr/bin/google-chrome-stable --user-data-dir=/tmp/pw-banking-ext \
+  --remote-debugging-port=9222 --no-first-run about:blank &
+```
+
+1. `chrome://extensions/` → 개발자 모드
+2. "압축해제된 확장 프로그램을 로드합니다" → `shinhan-extractor/` 선택
+3. 신한은행 로그인 시 "Access other apps and services" 모달 → **Allow 1회** (프로필에 저장)
+
+### 3. .env 설정
+
+```bash
+cp .env.example .env
+# ID=신한은행 이용자ID
+# PW=로그인 비밀번호
+# ACCOUNTS=계좌번호:계좌비밀번호,계좌번호2:비번2  (콤마 구분, 여러 개 가능)
+```
+
+> 계좌 비밀번호를 비워두면 로그인 후 계좌 select에서 목록을 자동으로 .env에 동기화해줌
+
+## 실행 방법
+
+### 1. VLM 서버 실행
+
+```bash
+cd vlm
+./llama-b10285/llama-server \
+  -m models/LFM2.5-VL-450M-Q8_0.gguf \
+  --mmproj models/mmproj-LFM2.5-VL-450m-Q8_0.gguf \
+  --port 8083 --host 127.0.0.1 -ngl 0 -c 4096 &
+```
+
+### 2. Playwright 테스트 (확장 동작 검증)
+
+```bash
+# 전제: Chrome CDP 9222 실행 상태
+NODE_PATH=$(npm root -g) npx playwright test
+```
+
+- `tests/extension.spec.js` — 확장 popup 로드, 은행 페이지 접근, 컨트롤 버튼 확인
+- connectOverCDP로 기존 Chrome(9222)을 제어 (프로필의 확장/allow 권한 유지)
+
+### 3. 전체 자동화 (driver.js)
+
+```bash
+cd ~/IdeaProjects/crawl-bank
+setsid env NODE_PATH=$(npm root -g) node driver.js > /tmp/opencode/driver-run.log 2>&1 < /dev/null &
+```
+
+자동 수행 흐름:
 
 ```
-1. 로그인 페이지 이동 → 보안프로그램 초기화 대기
-2. 키패드 문자 매핑:
-   a. Vision: 키패드 이미지 → SmolVLM2 서버(localhost:8083) → JSON charMap
-   b. 학습: 사용자가 a-z,0-9 순서대로 키패드 눌러서 매핑
-3. 로그인: 아이디(plainInput) + 비밀번호(TransKey tk.start)
-4. 계좌조회/거래내역 CSV (미완성)
+1. 로그인 (보안 프로그램 인지 → ID/PW 입력)
+2. ID로그인 안내 팝업 자동 처리
+3. 계좌 select에서 .env ACCOUNTS 자동 동기화
+4. 조회기간 1년 선택
+5. 계좌비밀번호 숫자 키패드 → VLM 인식(10/10) → TransKey 입력
+6. 계좌 조회 → 시작일 1년 전 재조회
+7. 파일저장 → 텍스트 저장(서버 정리본) → 연도/월별 CSV 저장 + 증분 병합
+   → capture/2026/{월}/transactions_{계좌}.csv
 ```
 
 ## 기술적 도전과 해결
@@ -46,55 +114,34 @@ crawl-bank/
 신한은행은 **Raon TransKey** 가상 키패드를 사용합니다.
 - 비밀번호 필드는 `readonly disabled`, 실제 입력 차단
 - 키패드는 **세션마다 랜덤 배치** (문자 위치가 매번 바뀜)
-- **신한은행 로고(더미 키)**가 45개 위치 중 9개에 섞여 있음
+- 로그인 키패드: 45키 (영문/숫자 + 아이콘 셔플)
+- 계좌비밀번호 키패드: **숫자 전용 17키** (중앙 3x4 + 좌우 Enter/⌫)
 
 ### 해결 과정
 
 | 시도 | 방법 | 결과 |
 |------|------|------|
-| 1 | 고정 인덱스 매핑 (q→13, w→14...) | ❌ 키패드 랜덤 배치로 실패 |
-| 2 | Tesseract OCR | ❌ 한글+영문 혼합에 max 17/36 |
-| 3 | ocrad.js (순수 JS OCR) | ❌ CSP unsafe-eval 차단 |
-| 4 | 서버 복호화 (getText) | ❌ 확장 컨텍스트 XHR 차단 |
-| 5 | Object.defineProperty 인터셉트 | ❌ 미작동 |
-| 6 | **SmolVLM2 Vision LLM** | ✅ 280MB, CPU 120t/s |
-| 7 | **키패드 학습 모드** | ✅ 폴백, 사용자 수동 매핑 |
+| 1~7 | Tesseract/ocrad/서버복호화 등 | ❌ 실패 |
+| 8 | **LFM2.5-VL-450M Vision LLM** | ✅ 개별 키 4x 크롭 → 34/36 |
+| 9 | **숫자 키패드 clip-VLM** | ✅ 계좌비밀번호 10/10 |
+| 10 | **Playwright connectOverCDP** | ✅ Chrome 137+ 확장 로드 차단 우회 |
 
 ### 핵심 기술
 
-1. **`tk.start(index)` 직접 호출**: `clickDummy=true`로 DKI 우회, 인덱스 기반 키 입력
-2. **`world: 'MAIN'`**: `chrome.scripting.executeScript`에서 페이지 전역(`tk`) 접근
-3. **`.gitkeep` → `tk.js` 파일명 변경**: Chrome `files` 캐시 우회
-4. **`tk.onKeyboard()` 항상 호출**: `tk.now` 상태 무관하게 키패드 열기
+1. **connectOverCDP**: Playwright가 프로필을 직접 열면 확장이 안 로드됨(Chrome 137+ `--load-extension` 차단) → 기존 Chrome(9222)에 붙어 제어
+2. **고정 프로필**(`/tmp/pw-banking-ext`): allow 권한 + 수동 설치 확장 저장 → 1회 설치로 반복 실행 가능
+3. **숫자 키패드 인식**: 키 앵커 화면 좌표 → `page.screenshot({clip})` → LFM 개별 인식 (min_p 0.15, repetition_penalty 1.05)
+4. **거래내역 저장**: 파일저장 팝업(iframe CO00012RP) → 전체 열 체크 → 텍스트 저장(서버 정리본, 세미콜론 구분) → 연도/월별 CSV + 증분 병합
 
-## 실행 방법
+## 연구 문서
 
-### 1. Vision 서버 실행
-
-```bash
-cd ~/IdeaProjects/crawl-bank/vlm
-LD_LIBRARY_PATH=llama-b10285 ./llama-b10285/llama-server \
-  -m models/SmolVLM2-256M-Video-Instruct-Q8_0.gguf \
-  --mmproj models/mmproj-SmolVLM2-256M-Video-Instruct-Q8_0.gguf \
-  --port 8083 --host 127.0.0.1 -ngl 0 -c 2048 &
-```
-
-### 2. 확장 프로그램 로드
-
-1. `chrome://extensions/` → 개발자 모드
-2. "로드되지 않은 확장 프로그램을 가져옵니다"
-3. `shinhan-extractor/` 폴더 선택
-
-### 3. 사용
-
-1. 신한은행 간편조회 접속: https://bank.shinhan.com/rib/easy/index.jsp
-2. 확장 팝업 → 아이디/비밀번호 입력
-3. **Vision 자동**: Vision 서버가 켜져 있으면 자동 인식 → 로그인
-4. **수동 학습**: Vision 없으면 "키패드 학습" → a-z,0-9 순서대로 키패드 누르기
+- `docs/research/STATUS.md` — 전체 진행상황 (다음 세션 이어가기용)
+- `docs/research/login/` — 로그인 파이프라인 (보안프로그램/키패드/모델)
+- `docs/research/extract/` — 계좌 조회/거래내역 파싱
 
 ## 기술 스택
 
 - **크롬 확장**: Manifest V3, chrome.scripting (world: MAIN)
-- **TransKey 제어**: Raon TransKey 4.6, tk.start 인덱스 API
-- **Vision**: SmolVLM2-256M (Q8_0), llama.cpp b10285, CPU 120t/s
-- **Fallback OCR**: Tesseract (pytesseract), ocrad.js (폐기)
+- **자동화**: Playwright (connectOverCDP, CDP 9222)
+- **Vision**: LFM2.5-VL-450M (Q8_0), llama.cpp b10285, CPU
+- **TransKey**: Raon TransKey, tk.start 인덱스 API
